@@ -30,8 +30,12 @@ struct JavaSyntaxTests {
         #expect(names(of: "Override").contains("attribute"))
     }
 
-    @Test func themeFallsBackToParentCapture() {
-        #expect(SyntaxTheme.color(for: ["function", "method"]) == SyntaxTheme.color(for: ["function"]))
+    @Test func themeFallsBackToParentCaptureAndLeavesTypesCallsAndConstantsPlain() {
+        #expect(SyntaxTheme.color(for: ["keyword", "control"]) == SyntaxTheme.color(for: ["keyword"]))
+        #expect(SyntaxTheme.color(for: ["type", "builtin"]) == SyntaxTheme.color(for: ["keyword"]))
+        #expect(SyntaxTheme.color(for: ["type"]) == nil)
+        #expect(SyntaxTheme.color(for: ["function", "method"]) == nil)
         #expect(SyntaxTheme.color(for: ["variable"]) == nil)
+        #expect(SyntaxTheme.color(for: ["constant"]) == nil)
     }
 }

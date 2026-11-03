@@ -77,19 +77,34 @@ final class SyntaxHighlighter: NSObject {
     }
 }
 
+/// GitHub's light and dark colors for keywords, literals, comments and annotations;
+/// types, calls and constants stay plain text to keep the code calm.
 @MainActor
 enum SyntaxTheme {
+    private static func color(light: UInt32, dark: UInt32) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let rgb = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+                           green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                           blue: CGFloat(rgb & 0xFF) / 255,
+                           alpha: 1)
+        }
+    }
+
+    private static let keyword = color(light: 0xCF222E, dark: 0xFF7B72)
+    private static let numeric = color(light: 0x0550AE, dark: 0x79C0FF)
+
     private static let colors: [String: NSColor] = [
-        "keyword": .systemPink,
-        "variable.builtin": .systemPink,
-        "type": .systemTeal,
-        "string": .systemRed,
-        "string.escape": .systemOrange,
-        "number": .systemPurple,
-        "constant": .systemPurple,
-        "comment": .systemGray,
-        "attribute": .systemBrown,
-        "function": .systemBlue,
+        "keyword": keyword,
+        "type.builtin": keyword,
+        "constant.builtin": keyword,
+        "variable.builtin": keyword,
+        "function.builtin": keyword,
+        "string": color(light: 0x0A3069, dark: 0xA5D6FF),
+        "string.escape": numeric,
+        "number": numeric,
+        "comment": color(light: 0x6E7781, dark: 0x8B949E),
+        "attribute": color(light: 0x8250DF, dark: 0xD2A8FF),
     ]
 
     /// Falls back from the most specific name, e.g. "function.method" → "function".
