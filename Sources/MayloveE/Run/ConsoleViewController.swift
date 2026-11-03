@@ -3,7 +3,8 @@ import AppKit
 /// Bottom panel showing a run's output, with clickable compiler errors and stack frames.
 @MainActor
 final class ConsoleViewController: NSViewController, NSTextViewDelegate {
-    private static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    /// One point smaller than the editor, like IntelliJ's console.
+    private static var font: NSFont { CodeFont.font(offset: -1) }
     /// Older output is dropped beyond this many characters to keep the view responsive.
     private static let maxLength = 2_000_000
 
@@ -41,6 +42,8 @@ final class ConsoleViewController: NSViewController, NSTextViewDelegate {
         textView.isSelectable = true
         textView.isRichText = true
         textView.font = Self.font
+        NotificationCenter.default.addObserver(self, selector: #selector(codeFontDidChange),
+                                               name: CodeFont.didChange, object: nil)
         textView.textContainerInset = NSSize(width: 6, height: 4)
         textView.delegate = self
         textView.isVerticallyResizable = true
@@ -74,6 +77,13 @@ final class ConsoleViewController: NSViewController, NSTextViewDelegate {
             scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
         view = container
+    }
+
+    @objc private func codeFontDidChange() {
+        textView.font = Self.font
+        if let storage = textView.textStorage {
+            storage.addAttribute(.font, value: Self.font, range: NSRange(location: 0, length: storage.length))
+        }
     }
 
     /// Clears the console for a new run.

@@ -7,8 +7,10 @@ enum MainMenu {
         mainMenu.addItem(submenuItem(appMenu()))
         mainMenu.addItem(submenuItem(fileMenu()))
         mainMenu.addItem(submenuItem(editMenu()))
+        mainMenu.addItem(submenuItem(viewMenu()))
         mainMenu.addItem(submenuItem(codeMenu()))
         mainMenu.addItem(submenuItem(runMenu()))
+        mainMenu.addItem(submenuItem(gitMenu()))
         mainMenu.addItem(submenuItem(windowMenu()))
         return mainMenu
     }
@@ -68,6 +70,18 @@ enum MainMenu {
         return menu
     }
 
+    /// ⌘0 belongs to the Commit tool window (IntelliJ's keymap), so reset uses ⌥⌘0.
+    private static func viewMenu() -> NSMenu {
+        let menu = NSMenu(title: "View")
+        menu.addItem(withTitle: "Increase Font Size", action: #selector(AppDelegate.increaseFontSize(_:)),
+                     keyEquivalent: "=")
+        menu.addItem(withTitle: "Decrease Font Size", action: #selector(AppDelegate.decreaseFontSize(_:)),
+                     keyEquivalent: "-")
+        menu.addItem(withTitle: "Reset Font Size", action: #selector(AppDelegate.resetFontSize(_:)),
+                     keyEquivalent: "0").keyEquivalentModifierMask = [.command, .option]
+        return menu
+    }
+
     /// Shortcuts follow IntelliJ IDEA's macOS keymap.
     private static func codeMenu() -> NSMenu {
         let menu = NSMenu(title: "Code")
@@ -105,6 +119,35 @@ enum MainMenu {
         return menu
     }
 
+    /// Shortcuts follow IntelliJ IDEA's macOS keymap.
+    private static func gitMenu() -> NSMenu {
+        let menu = NSMenu(title: "Git")
+        menu.addItem(withTitle: "Commit…", action: #selector(WorkspaceWindowController.commitChanges(_:)),
+                     keyEquivalent: "k")
+        menu.addItem(withTitle: "Push…", action: #selector(WorkspaceWindowController.pushChanges(_:)),
+                     keyEquivalent: "k").keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(withTitle: "Update Project…", action: #selector(WorkspaceWindowController.updateProject(_:)),
+                     keyEquivalent: "t")
+        menu.addItem(withTitle: "Fetch", action: #selector(WorkspaceWindowController.fetchChanges(_:)),
+                     keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Branches…", action: #selector(WorkspaceWindowController.showBranches(_:)),
+                     keyEquivalent: "")
+        menu.addItem(withTitle: "New Branch…", action: #selector(WorkspaceWindowController.newBranch(_:)),
+                     keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Show Diff", action: #selector(WorkspaceWindowController.showFileDiff(_:)),
+                     keyEquivalent: "")
+        menu.addItem(withTitle: "Rollback…", action: #selector(WorkspaceWindowController.rollbackFile(_:)),
+                     keyEquivalent: "z").keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(withTitle: "Show Git Log", action: #selector(WorkspaceWindowController.toggleGitLog(_:)),
+                     keyEquivalent: "9")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Create Git Repository…",
+                     action: #selector(WorkspaceWindowController.createGitRepository(_:)), keyEquivalent: "")
+        return menu
+    }
+
     private static func functionKey(_ key: Int) -> String {
         UnicodeScalar(key).map { String(Character($0)) } ?? ""
     }
@@ -112,6 +155,11 @@ enum MainMenu {
     private static func windowMenu() -> NSMenu {
         let menu = NSMenu(title: "Window")
         menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Project", action: #selector(WorkspaceWindowController.showProjectPane(_:)),
+                     keyEquivalent: "1")
+        menu.addItem(withTitle: "Commit", action: #selector(WorkspaceWindowController.showCommitPane(_:)),
+                     keyEquivalent: "0")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Select Next Tab",
                      action: #selector(WorkspaceWindowController.selectNextTab(_:)),

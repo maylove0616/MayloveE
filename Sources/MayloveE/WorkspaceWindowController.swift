@@ -1,11 +1,16 @@
 import AppKit
 
 @MainActor
-final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate,
+                                       NSMenuItemValidation {
     let rootURL: URL
     var onClose: (() -> Void)?
 
     private let editorArea = EditorAreaViewController()
+    private let fileTree: FileTreeViewController
+    private let sidebar: SidebarViewController
+    private let git: GitController
+    private var fileWatcher: FileWatcher?
     private var languageServer: JavaLanguageServer?
     private lazy var runController = makeRunController()
 
@@ -13,9 +18,13 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         self.rootURL = rootURL
 
         let fileTree = FileTreeViewController(rootURL: rootURL)
+        let commitView = CommitViewController()
+        let sidebar = SidebarViewController(project: fileTree, commit: commitView)
+        self.fileTree = fileTree
+        self.sidebar = sidebar
 
         let split = NSSplitViewController()
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: fileTree)
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
         sidebarItem.minimumThickness = 200
         sidebarItem.maximumThickness = 500
         split.addSplitViewItem(sidebarItem)
@@ -34,6 +43,9 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         window.toolbarStyle = .unified
         window.center()
 
+        git = GitController(rootURL: rootURL, editorArea: editorArea, fileTree: fileTree, sidebar: sidebar,
+                            commitView: commitView, window: window)
+
         super.init(window: window)
 
         let toolbar = NSToolbar(identifier: "Workspace")
@@ -46,6 +58,26 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         }
         editorArea.languageServerProvider = { [unowned self] in self.javaLanguageServer() }
         editorArea.onSelectionChange = { [weak self] url in self?.showSubtitle(for: url) }
+        git.onRepositoryChange = { [weak self] repository in self?.watchFiles(gitDirectoryOf: repository) }
+        watchFiles(gitDirectoryOf: nil)
+    }
+
+    /// Files changed outside the editor (terminal git, builds, other apps): refresh the tree,
+    /// reload editors without unsaved changes, and re-read the Git status. A repository whose
+    /// top level is above the opened folder has its .git directory watched as well.
+    private func watchFiles(gitDirectoryOf repository: GitRepository?) {
+        var urls = [rootURL]
+        // The top level is the opened folder or one of its ancestors.
+        if let repository, repository.root.path != rootURL.standardizedFileURL.path {
+            urls.append(repository.root.appendingPathComponent(".git"))
+        }
+        fileWatcher?.stop()
+        fileWatcher = FileWatcher(urls: urls) { [weak self] _ in
+            guard let self else { return }
+            self.fileTree.refreshFromDisk()
+            self.editorArea.reloadEditorsFromDisk()
+            self.git.refresh()
+        }
     }
 
     private static let sidebarWidth: CGFloat = 260
@@ -64,18 +96,24 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
     // MARK: - NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator]
+        [.toggleSidebar, .sidebarTrackingSeparator, Self.branchItem, .flexibleSpace]
     }
+
+    private static let branchItem = NSToolbarItem.Identifier("Branch")
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbarDefaultItemIdentifiers(toolbar)
     }
 
-    /// Only system-provided items, which AppKit creates itself.
+    /// The branch widget; the other items are system-provided.
     func toolbar(_ toolbar: NSToolbar,
                  itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        nil
+        guard itemIdentifier == Self.branchItem else { return nil }
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        item.label = "Branch"
+        item.view = git.branchButton
+        return item
     }
 
     /// Started lazily so non-Java folders never pay for a JVM.
@@ -137,10 +175,38 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
     }
 
     @objc func toggleConsole(_ sender: Any?) {
-        if editorArea.isBottomPanelVisible {
+        if editorArea.isShowingInBottomPanel(runController.console.view) {
             editorArea.hideBottomPanel()
         } else {
             editorArea.showBottomPanel(runController.console.view)
+        }
+    }
+
+    // MARK: - Git menu (IntelliJ IDEA macOS keymap)
+
+    @objc func commitChanges(_ sender: Any?) { git.showCommit() }
+    @objc func pushChanges(_ sender: Any?) { git.push() }
+    @objc func updateProject(_ sender: Any?) { git.pull() }
+    @objc func fetchChanges(_ sender: Any?) { git.fetch() }
+    @objc func showBranches(_ sender: Any?) { git.showBranchMenu(sender) }
+    @objc func newBranch(_ sender: Any?) { git.newBranch() }
+    @objc func toggleGitLog(_ sender: Any?) { git.toggleLog() }
+    @objc func showFileDiff(_ sender: Any?) { git.showDiffForCurrentFile() }
+    @objc func rollbackFile(_ sender: Any?) { git.rollbackCurrentFile() }
+    @objc func createGitRepository(_ sender: Any?) { git.createRepository() }
+    @objc func showProjectPane(_ sender: Any?) { sidebar.select(.project) }
+    @objc func showCommitPane(_ sender: Any?) { git.showCommit() }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(createGitRepository(_:)):
+            return git.repository == nil
+        case #selector(commitChanges(_:)), #selector(pushChanges(_:)), #selector(updateProject(_:)),
+             #selector(fetchChanges(_:)), #selector(newBranch(_:)), #selector(toggleGitLog(_:)),
+             #selector(showFileDiff(_:)), #selector(rollbackFile(_:)):
+            return git.repository != nil
+        default:
+            return true
         }
     }
 
@@ -195,6 +261,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
     }
 
     func windowWillClose(_ notification: Notification) {
+        fileWatcher?.stop()
         runController.stop()
         languageServer?.stop()
         onClose?()

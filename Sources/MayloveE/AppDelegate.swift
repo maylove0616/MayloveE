@@ -36,6 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         workspaces.forEach { $0.terminateProcesses() }
     }
 
+    @objc func increaseFontSize(_ sender: Any?) { CodeFont.increase() }
+    @objc func decreaseFontSize(_ sender: Any?) { CodeFont.decrease() }
+    @objc func resetFontSize(_ sender: Any?) { CodeFont.reset() }
+
     @objc func openFolder(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true

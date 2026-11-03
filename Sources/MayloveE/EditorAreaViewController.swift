@@ -21,6 +21,10 @@ final class EditorAreaViewController: NSViewController {
     var languageServerProvider: (() -> JavaLanguageServer)?
     /// Called with the selected editor's URL, or nil when the last tab closes.
     var onSelectionChange: ((URL?) -> Void)?
+    /// Git status of a file, for coloring its tab title.
+    var gitStatus: ((URL) -> GitFileChange.Kind?)?
+    /// The committed contents of a file, for the gutter's change bars.
+    var gitBase: ((URL) async -> String?)?
 
     var hasOpenTabs: Bool { !editors.isEmpty }
 
@@ -88,6 +92,10 @@ final class EditorAreaViewController: NSViewController {
 
     var isBottomPanelVisible: Bool { !bottomPanel.isHidden }
 
+    func isShowingInBottomPanel(_ panel: NSView) -> Bool {
+        isBottomPanelVisible && panel.superview === bottomPanel
+    }
+
     /// Shows `panel` (e.g. the console) below the editors, giving it about a third of the height.
     func showBottomPanel(_ panel: NSView) {
         if panel.superview !== bottomPanel {
@@ -146,6 +154,51 @@ final class EditorAreaViewController: NSViewController {
         }
     }
 
+    /// Recolors tab titles after the Git status changed.
+    func refreshGitStatus() {
+        reloadTabBar()
+    }
+
+    /// Re-reads every editor's committed contents, e.g. after a commit or branch switch.
+    func refreshGitBases() {
+        editors.forEach(loadGitBase)
+    }
+
+    /// Reloads editors without unsaved changes whose files changed on disk.
+    func reloadEditorsFromDisk() {
+        for editor in editors where editor.reloadFromDisk() {
+            loadGitBase(for: editor)
+        }
+    }
+
+    /// After a Git rollback: rolled-back files lose their unsaved changes, deleted files lose their tabs.
+    func discardChanges(in urls: [URL]) {
+        let paths = Set(urls.map(\.standardizedFileURL.path))
+        for index in editors.indices.reversed() where paths.contains(editors[index].url.standardizedFileURL.path) {
+            let editor = editors[index]
+            if FileManager.default.fileExists(atPath: editor.url.path) {
+                editor.reloadFromDisk(discardingChanges: true)
+                loadGitBase(for: editor)
+            } else {
+                closeTab(at: index, confirm: false)
+            }
+        }
+    }
+
+    /// The text of an open editor (with unsaved changes), if the file is open.
+    func openText(of url: URL) -> String? {
+        editors.first { Self.isSameFile($0.url, url) }?.text
+    }
+
+    private func loadGitBase(for editor: EditorViewController) {
+        guard let gitBase, editor.url.isFileURL else { return }
+        let url = editor.url
+        Task { [weak editor] in
+            let base = await gitBase(url)
+            editor?.gitBase = base
+        }
+    }
+
     func applyDiagnostics(_ diagnostics: [LSPDiagnostic], for url: URL) {
         editors.first { Self.isSameFile($0.url, url) }?.setDiagnostics(diagnostics)
     }
@@ -155,6 +208,7 @@ final class EditorAreaViewController: NSViewController {
         editor.onNavigate = { [weak self] location in self?.navigate(to: location) }
         addChild(editor)
         editors.append(editor)
+        loadGitBase(for: editor)
         select(editors.count - 1)
     }
 
@@ -213,9 +267,9 @@ final class EditorAreaViewController: NSViewController {
         onSelectionChange?(editor.url)
     }
 
-    private func closeTab(at index: Int) {
+    private func closeTab(at index: Int, confirm: Bool = true) {
         let editor = editors[index]
-        guard confirmSaveIfNeeded(editor) else { return }
+        guard !confirm || confirmSaveIfNeeded(editor) else { return }
 
         let previousSelection = selectedIndex
         editor.close()
@@ -259,7 +313,7 @@ final class EditorAreaViewController: NSViewController {
     private func reloadTabBar() {
         let items = editors.map {
             TabBarItem(title: $0.url.lastPathComponent, toolTip: $0.url.path, isDirty: $0.isDirty,
-                       icon: FileIcon.image(for: $0.url))
+                       icon: FileIcon.image(for: $0.url), titleColor: gitStatus?($0.url)?.color)
         }
         tabBar.update(items: items, selectedIndex: selectedIndex)
         emptyLabel.isHidden = !editors.isEmpty

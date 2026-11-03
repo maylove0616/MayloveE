@@ -10,12 +10,44 @@ final class LineNumberGutter: NSRulerView {
         }
     }
 
-    private let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+    /// Uncommitted changes against Git HEAD, drawn as bars at the gutter's right edge.
+    var changes: [LineHunk] = [] {
+        didSet {
+            changedLines = [:]
+            deletionsBefore = []
+            for hunk in changes {
+                if hunk.new.isEmpty {
+                    deletionsBefore.insert(hunk.new.lowerBound)
+                } else {
+                    for line in hunk.new { changedLines[line] = hunk.kind }
+                }
+            }
+            needsDisplay = true
+        }
+    }
+
+    /// Custom per-line labels, e.g. original line numbers in a diff with blank filler lines.
+    var lineLabels: [String]? {
+        didSet { needsDisplay = true }
+    }
+
+    private var font = CodeFont.gutterFont()
+    private var changedLines: [Int: LineHunk.Kind] = [:]
+    /// Lines that have deleted lines just above them.
+    private var deletionsBefore: Set<Int> = []
 
     init(textView: NSTextView) {
         super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
         clientView = textView
         updateThickness()
+        NotificationCenter.default.addObserver(self, selector: #selector(codeFontDidChange),
+                                               name: CodeFont.didChange, object: nil)
+    }
+
+    @objc private func codeFontDidChange() {
+        font = CodeFont.gutterFont()
+        updateThickness()
+        needsDisplay = true
     }
 
     @available(*, unavailable)
@@ -28,7 +60,7 @@ final class LineNumberGutter: NSRulerView {
     private func updateThickness() {
         let digits = max(3, String(lineIndex.lineCount).count)
         let digitWidth = ("8" as NSString).size(withAttributes: [.font: font]).width
-        let thickness = ceil(CGFloat(digits) * digitWidth + 20)
+        let thickness = ceil(CGFloat(digits) * digitWidth + 24)
         if ruleThickness != thickness {
             ruleThickness = thickness
         }
@@ -69,12 +101,31 @@ final class LineNumberGutter: NSRulerView {
             }
 
             let origin = convert(NSPoint(x: 0, y: fragment.minY + textView.textContainerOrigin.y), from: textView)
-            let label = String(line + 1) as NSString
+            let label = (lineLabels.map { line < $0.count ? $0[line] : "" } ?? String(line + 1)) as NSString
             let size = label.size(withAttributes: attributes)
-            label.draw(at: NSPoint(x: ruleThickness - size.width - 8,
+            label.draw(at: NSPoint(x: ruleThickness - size.width - 12,
                                    y: origin.y + (fragment.height - size.height) / 2),
                        withAttributes: attributes)
+            drawChangeMarker(forLine: line, top: origin.y, height: fragment.height)
             line += 1
+        }
+    }
+
+    private func drawChangeMarker(forLine line: Int, top: CGFloat, height: CGFloat) {
+        let x = bounds.maxX - 7
+        if let kind = changedLines[line] {
+            kind.color.setFill()
+            NSRect(x: x, y: top, width: 3, height: height).fill()
+        }
+        if deletionsBefore.contains(line) {
+            // A small triangle pointing into the text, on the boundary where lines were removed.
+            LineHunk.Kind.deleted.color.setFill()
+            let path = NSBezierPath()
+            path.move(to: NSPoint(x: x, y: top - 4))
+            path.line(to: NSPoint(x: x + 5, y: top))
+            path.line(to: NSPoint(x: x, y: top + 4))
+            path.close()
+            path.fill()
         }
     }
 }

@@ -4,7 +4,6 @@ import os
 /// One open file: text view, line-number gutter, syntax highlighting and language features.
 @MainActor
 final class EditorViewController: NSViewController, NSTextViewDelegate {
-    private static let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
     private static let logger = Logger(subsystem: "MayloveE", category: "Editor")
 
     let url: URL
@@ -36,6 +35,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
     private var hover: HoverController?
     private let locationChooser = ListPopup()
     private var chooserLocations: [LSPLocation] = []
+
+    /// The file's committed contents; nil when untracked or not in a Git repository.
+    var gitBase: String? {
+        didSet {
+            if gitBase != oldValue { scheduleGitMarkers() }
+        }
+    }
+    private var isGitMarkersPending = false
 
     /// Opens a file from disk for editing.
     convenience init(url: URL, languageServer: JavaLanguageServer?) {
@@ -77,6 +84,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
 
         let gutter = LineNumberGutter(textView: textView)
         gutter.lineIndex = lineIndex
+        if let gitBase {
+            gutter.changes = LineDiff.hunks(old: gitBase, new: initialContents)
+        }
         scrollView.verticalRulerView = gutter
         scrollView.hasVerticalRuler = true
         scrollView.rulersVisible = true
@@ -95,6 +105,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(dismissPopups),
                                                name: NSView.boundsDidChangeNotification,
                                                object: scrollView.contentView)
+        NotificationCenter.default.addObserver(self, selector: #selector(codeFontDidChange),
+                                               name: CodeFont.didChange, object: nil)
+    }
+
+    @objc private func codeFontDidChange() {
+        dismissPopups()
+        textView.font = CodeFont.font()
+        highlighter?.refresh()
     }
 
     private func configureTextView() {
@@ -102,7 +120,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         textView.allowsUndo = true
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
-        textView.font = Self.font
+        textView.font = CodeFont.font()
         textView.textContainerInset = NSSize(width: 4, height: 4)
 
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -205,6 +223,45 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         isDirty = false
         syncIfNeeded()
         languageServer?.didSave(url)
+    }
+
+    /// The current text, including unsaved changes.
+    var text: String { textView.string }
+
+    /// Picks up the file's new contents after it changed on disk (e.g. a branch switch).
+    /// Unsaved changes are kept unless discarded (Git rollback); returns whether the text was replaced.
+    @discardableResult
+    func reloadFromDisk(discardingChanges: Bool = false) -> Bool {
+        guard isViewLoaded, isEditable, !isDirty || discardingChanges, url.isFileURL,
+              let contents = try? String(contentsOf: url, encoding: .utf8),
+              contents != textView.string,
+              let storage = textView.textStorage else { return false }
+
+        let selection = textView.selectedRange()
+        storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: contents)
+        // The undo stack refers to the old text.
+        textView.undoManager?.removeAllActions(withTarget: textView)
+        let length = (contents as NSString).length
+        textView.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
+        lineIndex = LineIndex(contents)
+        gutter?.lineIndex = lineIndex
+        highlighter?.textDidChange()
+        version += 1
+        scheduleSync()
+        scheduleGitMarkers()
+        isDirty = false
+        return true
+    }
+
+    /// Recomputes the gutter's change bars once per run loop pass, not per keystroke.
+    private func scheduleGitMarkers() {
+        guard !isGitMarkersPending else { return }
+        isGitMarkersPending = true
+        Task { [weak self] in
+            guard let self else { return }
+            self.isGitMarkersPending = false
+            self.gutter?.changes = self.gitBase.map { LineDiff.hunks(old: $0, new: self.textView.string) } ?? []
+        }
     }
 
     // MARK: - Language features
@@ -374,6 +431,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         highlighter?.textDidChange()
         version += 1
         scheduleSync()
+        scheduleGitMarkers()
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {

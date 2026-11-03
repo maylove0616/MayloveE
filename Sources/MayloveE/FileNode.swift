@@ -12,7 +12,14 @@ final class FileNode {
     /// The file name, or a compacted package such as "com.example.demo".
     let name: String
 
-    private(set) lazy var children: [FileNode] = isDirectory ? loadChildren() : []
+    private var loadedChildren: [FileNode]?
+
+    var children: [FileNode] {
+        if let loadedChildren { return loadedChildren }
+        let children = isDirectory ? loadChildren() : []
+        loadedChildren = children
+        return children
+    }
 
     /// Hidden files and build output, shown dimmed.
     var isDimmed: Bool {
@@ -23,6 +30,28 @@ final class FileNode {
         self.url = url
         self.isDirectory = isDirectory
         self.name = name ?? url.lastPathComponent
+    }
+
+    /// Re-lists this directory and every already-listed directory below it, keeping the node objects
+    /// of entries that still exist (so the outline view keeps their expansion and selection).
+    /// Returns the nodes whose children changed.
+    func refresh() -> [FileNode] {
+        guard let current = loadedChildren else { return [] }
+        let existing = Dictionary(current.map { ($0.identity, $0) }, uniquingKeysWith: { first, _ in first })
+        let merged = loadChildren().map { existing[$0.identity] ?? $0 }
+        var changed: [FileNode] = []
+        if merged.map(\.identity) != current.map(\.identity) {
+            loadedChildren = merged
+            changed.append(self)
+        }
+        for child in merged {
+            changed += child.refresh()
+        }
+        return changed
+    }
+
+    private var identity: String {
+        "\(isDirectory ? "d" : "f")|\(name)|\(url.path)"
     }
 
     private func loadChildren() -> [FileNode] {

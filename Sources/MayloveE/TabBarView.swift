@@ -5,6 +5,8 @@ struct TabBarItem {
     let toolTip: String
     let isDirty: Bool
     let icon: NSImage?
+    /// Overrides the default title color, e.g. for Git status.
+    let titleColor: NSColor?
 }
 
 @MainActor
@@ -112,7 +114,7 @@ private final class TabView: NSView {
 
         let label = NSTextField(labelWithString: item.title)
         label.font = .systemFont(ofSize: 12, weight: isSelected ? .medium : .regular)
-        label.textColor = isSelected ? .labelColor : .secondaryLabelColor
+        label.textColor = item.titleColor ?? (isSelected ? .labelColor : .secondaryLabelColor)
 
         closeButton.isBordered = false
         closeButton.contentTintColor = .secondaryLabelColor
