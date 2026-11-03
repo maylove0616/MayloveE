@@ -109,7 +109,8 @@ final class JavaLanguageServer {
         let java = toolchain.serverJavaHome.appendingPathComponent("bin/java")
         let process = Process()
         process.executableURL = java
-        process.arguments = Self.jvmArguments(for: toolchain) + [
+        process.arguments = Self.jvmArguments(for: toolchain,
+                                              configurationArea: try Self.configurationArea(for: toolchain)) + [
             "-jar", toolchain.launcherJar.path,
             "-data", try Self.workspaceDataDirectory(for: rootURL).path,
         ]
@@ -151,7 +152,7 @@ final class JavaLanguageServer {
         Task { await initialize() }
     }
 
-    private static func jvmArguments(for toolchain: JavaToolchain) -> [String] {
+    private static func jvmArguments(for toolchain: JavaToolchain, configurationArea: URL) -> [String] {
         var arguments = [
             "-Declipse.application=org.eclipse.jdt.ls.core.id1",
             "-Dosgi.bundles.defaultStartLevel=4",
@@ -160,6 +161,7 @@ final class JavaLanguageServer {
             "-Dosgi.sharedConfiguration.area=" + toolchain.jdtlsHome.appendingPathComponent("config_mac_arm").path,
             "-Dosgi.sharedConfiguration.area.readOnly=true",
             "-Dosgi.configuration.cascaded=true",
+            "-Dosgi.configuration.area=" + configurationArea.path,
             "-Xmx2G",
             "--add-modules=ALL-SYSTEM",
             "--add-opens", "java.base/java.util=ALL-UNNAMED",
@@ -171,6 +173,18 @@ final class JavaLanguageServer {
                                           "-Djdk.xml.totalEntitySizeLimit=0"], at: 0)
         }
         return arguments
+    }
+
+    /// OSGi's writable state. Without it, Equinox writes into the jdtls installation, which inside
+    /// the app bundle would break its code signature. One directory per jdtls installation.
+    private static func configurationArea(for toolchain: JavaToolchain) throws -> URL {
+        let digest = SHA256.hash(data: Data(toolchain.jdtlsHome.standardizedFileURL.path.utf8))
+        let suffix = digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+        let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+                                                 appropriateFor: nil, create: true)
+        let directory = caches.appendingPathComponent("MayloveE/jdtls-config/\(suffix)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 
     /// jdtls keeps per-project indexes here; one directory per workspace root.
