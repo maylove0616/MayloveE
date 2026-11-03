@@ -20,9 +20,23 @@ final class JavaLanguageServer {
 
     private(set) var status: Status = .stopped {
         didSet {
-            if status != oldValue { onStatusChange?(status) }
+            guard status != oldValue else { return }
+            onStatusChange?(status)
+            resumeReadyWaiters()
         }
     }
+
+    enum ReadinessError: LocalizedError {
+        case unavailable(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .unavailable(let reason): return "Java language server unavailable: \(reason)"
+            }
+        }
+    }
+
+    private var readyWaiters: [CheckedContinuation<Void, Error>] = []
 
     private var process: Process?
     private var connection: JSONRPCConnection?
@@ -37,6 +51,29 @@ final class JavaLanguageServer {
     }
 
     // MARK: - Lifecycle
+
+    /// Returns once the server has imported the project; throws if it fails or stops instead.
+    func waitUntilReady() async throws {
+        switch status {
+        case .ready: return
+        case .failed(let reason): throw ReadinessError.unavailable(reason)
+        case .stopped, .starting: break
+        }
+        try await withCheckedThrowingContinuation { readyWaiters.append($0) }
+    }
+
+    private func resumeReadyWaiters() {
+        let result: Result<Void, Error>
+        switch status {
+        case .ready: result = .success(())
+        case .failed(let reason): result = .failure(ReadinessError.unavailable(reason))
+        case .stopped: result = .failure(ReadinessError.unavailable("stopped"))
+        case .starting: return
+        }
+        let waiters = readyWaiters
+        readyWaiters.removeAll()
+        waiters.forEach { $0.resume(with: result) }
+    }
 
     func start() {
         guard process == nil, case .stopped = status else { return }
@@ -245,6 +282,13 @@ final class JavaLanguageServer {
         diagnostics[url.standardizedFileURL.path] ?? []
     }
 
+    /// Every error the server currently reports, by file, for the "build failed" summary.
+    func allErrors() -> [(file: URL, diagnostic: LSPDiagnostic)] {
+        diagnostics.sorted { $0.key < $1.key }.flatMap { path, items in
+            items.filter { $0.severity == .error }.map { (URL(fileURLWithPath: path), $0) }
+        }
+    }
+
     func didOpen(_ url: URL, text: String, version: Int) {
         notify("textDocument/didOpen", ["textDocument": [
             "uri": .string(url.absoluteString), "languageId": "java",
@@ -305,6 +349,35 @@ final class JavaLanguageServer {
     /// Source (attached or decompiled) for a `jdt://` location inside the JDK or a library.
     func classFileContents(_ url: URL) async throws -> String? {
         try await request("java/classFileContents", ["uri": .string(url.absoluteString)]).stringValue
+    }
+
+    enum BuildResult: Int {
+        case failed = 0, succeeded, withErrors, cancelled
+    }
+
+    /// Incremental build into the project's output folders (target/classes for Maven).
+    func build() async throws -> BuildResult {
+        let result = try await request("java/buildWorkspace", false)
+        return result.intValue.flatMap(BuildResult.init) ?? .failed
+    }
+
+    /// Classpath entries for the project containing `url`; scope is "runtime" or "test".
+    func classpath(for url: URL, scope: String) async throws -> [String] {
+        let options = String(decoding: try JSONEncoder().encode(JSONValue.object(["scope": .string(scope)])),
+                             as: UTF8.self)
+        let result = try await executeCommand("java.project.getClasspaths", [.string(url.absoluteString), .string(options)])
+        return result["classpaths"]?.arrayValue?.compactMap(\.stringValue) ?? []
+    }
+
+    /// The JDK the project is configured for (e.g. Zulu 8 for a Java 8 Maven project).
+    func projectJDK(for url: URL) async throws -> URL? {
+        let key = "org.eclipse.jdt.ls.core.vm.location"
+        let result = try await executeCommand("java.project.getSettings", [.string(url.absoluteString), [.string(key)]])
+        return result[key]?.stringValue.map { URL(fileURLWithPath: $0) }
+    }
+
+    private func executeCommand(_ command: String, _ arguments: [JSONValue]) async throws -> JSONValue {
+        try await request("workspace/executeCommand", ["command": .string(command), "arguments": .array(arguments)])
     }
 
     private func positionParams(_ url: URL, _ position: LSPPosition) -> JSONValue {

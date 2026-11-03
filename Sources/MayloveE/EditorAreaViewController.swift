@@ -7,7 +7,10 @@ final class EditorAreaViewController: NSViewController {
     private static let logger = Logger(subsystem: "MayloveE", category: "EditorArea")
 
     private let tabBar = TabBarView()
+    /// Editors on top, the bottom panel (console) below.
+    private let splitView = NSSplitView()
     private let contentView = NSView()
+    private let bottomPanel = NSView()
     private let emptyLabel = NSTextField(labelWithString: "Double-click a file to open it")
     private let statusLabel = NSTextField(labelWithString: "")
 
@@ -35,11 +38,20 @@ final class EditorAreaViewController: NSViewController {
         let statusSeparator = NSBox()
         statusSeparator.boxType = .separator
 
-        for subview in [tabBar, contentView, emptyLabel, statusSeparator, statusLabel] as [NSView] {
+        splitView.isVertical = false
+        splitView.dividerStyle = .thin
+        splitView.addArrangedSubview(contentView)
+        splitView.addArrangedSubview(bottomPanel)
+        // The console keeps its height when the window resizes.
+        splitView.setHoldingPriority(.defaultLow, forSubviewAt: 0)
+        splitView.setHoldingPriority(.defaultLow + 10, forSubviewAt: 1)
+        bottomPanel.isHidden = true
+
+        for subview in [tabBar, splitView, emptyLabel, statusSeparator, statusLabel] as [NSView] {
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
         container.addSubview(tabBar)
-        container.addSubview(contentView)
+        container.addSubview(splitView)
         container.addSubview(statusSeparator)
         container.addSubview(statusLabel)
         contentView.addSubview(emptyLabel)
@@ -47,10 +59,12 @@ final class EditorAreaViewController: NSViewController {
             tabBar.topAnchor.constraint(equalTo: container.topAnchor),
             tabBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            contentView.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
-            contentView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            contentView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            contentView.bottomAnchor.constraint(equalTo: statusSeparator.topAnchor),
+            // Required: the split view's own constraints would otherwise outweigh the intrinsic height.
+            tabBar.heightAnchor.constraint(equalToConstant: TabBarView.height),
+            splitView.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
+            splitView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            splitView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            splitView.bottomAnchor.constraint(equalTo: statusSeparator.topAnchor),
             statusSeparator.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             statusSeparator.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             statusSeparator.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -22),
@@ -67,6 +81,33 @@ final class EditorAreaViewController: NSViewController {
     func setStatus(_ text: String) {
         statusLabel.stringValue = text
         statusLabel.toolTip = text
+    }
+
+    var isBottomPanelVisible: Bool { !bottomPanel.isHidden }
+
+    /// Shows `panel` (e.g. the console) below the editors, giving it about a third of the height.
+    func showBottomPanel(_ panel: NSView) {
+        if panel.superview !== bottomPanel {
+            bottomPanel.subviews.forEach { $0.removeFromSuperview() }
+            panel.frame = bottomPanel.bounds
+            panel.autoresizingMask = [.width, .height]
+            bottomPanel.addSubview(panel)
+        }
+        guard bottomPanel.isHidden else { return }
+        bottomPanel.isHidden = false
+        splitView.adjustSubviews()
+        splitView.setPosition(splitView.bounds.height * 0.65, ofDividerAt: 0)
+    }
+
+    func hideBottomPanel() {
+        bottomPanel.isHidden = true
+        splitView.adjustSubviews()
+        selectedEditor?.didBecomeVisible()
+    }
+
+    /// Saves every modified editor, e.g. before a build; returns false if any save failed.
+    func saveAll() -> Bool {
+        editors.filter(\.isDirty).allSatisfy { save($0) }
     }
 
     func open(_ url: URL) {

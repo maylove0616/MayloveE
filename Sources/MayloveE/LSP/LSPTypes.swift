@@ -39,6 +39,11 @@ struct LSPLocation: Equatable, Sendable {
     let url: URL
     let range: LSPRange
 
+    init(url: URL, range: LSPRange) {
+        self.url = url
+        self.range = range
+    }
+
     /// Accepts both `Location` and `LocationLink`.
     init?(_ json: JSONValue) {
         let uri = json["uri"]?.stringValue ?? json["targetUri"]?.stringValue

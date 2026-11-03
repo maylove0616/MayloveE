@@ -8,6 +8,7 @@ enum MainMenu {
         mainMenu.addItem(submenuItem(fileMenu()))
         mainMenu.addItem(submenuItem(editMenu()))
         mainMenu.addItem(submenuItem(codeMenu()))
+        mainMenu.addItem(submenuItem(runMenu()))
         mainMenu.addItem(submenuItem(windowMenu()))
         return mainMenu
     }
@@ -82,6 +83,25 @@ enum MainMenu {
         menu.addItem(withTitle: "Quick Documentation",
                      action: #selector(WorkspaceWindowController.quickDocumentation(_:)),
                      keyEquivalent: functionKey(NSF1FunctionKey)).keyEquivalentModifierMask = []
+        return menu
+    }
+
+    /// Shortcuts follow IntelliJ IDEA's macOS keymap.
+    private static func runMenu() -> NSMenu {
+        let menu = NSMenu(title: "Run")
+        menu.addItem(withTitle: "Run Context Configuration",
+                     action: #selector(WorkspaceWindowController.runContext(_:)),
+                     keyEquivalent: "r").keyEquivalentModifierMask = [.control, .shift]
+        menu.addItem(withTitle: "Rerun",
+                     action: #selector(WorkspaceWindowController.rerun(_:)),
+                     keyEquivalent: "r").keyEquivalentModifierMask = [.control]
+        menu.addItem(withTitle: "Stop",
+                     action: #selector(WorkspaceWindowController.stopRun(_:)),
+                     keyEquivalent: functionKey(NSF2FunctionKey)).keyEquivalentModifierMask = [.command]
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Show/Hide Console",
+                     action: #selector(WorkspaceWindowController.toggleConsole(_:)),
+                     keyEquivalent: "4")
         return menu
     }
 

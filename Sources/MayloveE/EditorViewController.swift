@@ -233,6 +233,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         }
     }
 
+    /// What Run should execute for the caret position, if anything; only for project sources.
+    func runTarget() -> RunTarget? {
+        guard isJavaSource, isEditable else { return nil }
+        return RunTargetResolver.resolve(text: textView.string, caret: textView.selectedRange().location)
+    }
+
     func showQuickDocumentation() {
         hover?.showNow(at: caretIndexForLookup())
     }

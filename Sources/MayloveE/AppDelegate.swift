@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        workspaces.forEach { $0.terminateLanguageServer() }
+        workspaces.forEach { $0.terminateProcesses() }
     }
 
     @objc func openFolder(_ sender: Any?) {

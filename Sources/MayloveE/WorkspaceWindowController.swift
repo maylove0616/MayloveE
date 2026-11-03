@@ -7,6 +7,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
 
     private let editorArea = EditorAreaViewController()
     private var languageServer: JavaLanguageServer?
+    private lazy var runController = makeRunController()
 
     init(rootURL: URL) {
         self.rootURL = rootURL
@@ -61,9 +62,48 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Kills the language server without the shutdown handshake, for app termination.
-    func terminateLanguageServer() {
+    private func makeRunController() -> RunController {
+        let controller = RunController(rootURL: rootURL) { [unowned self] in self.javaLanguageServer() }
+        controller.onShowConsole = { [unowned self, unowned controller] in
+            self.editorArea.showBottomPanel(controller.console.view)
+        }
+        controller.onHideConsole = { [unowned self] in self.editorArea.hideBottomPanel() }
+        controller.onOpenLocation = { [unowned self] location in self.editorArea.navigate(to: location) }
+        controller.saveAll = { [unowned self] in self.editorArea.saveAll() }
+        return controller
+    }
+
+    /// Kills child processes without graceful shutdown, for app termination.
+    func terminateProcesses() {
+        runController.stop()
         languageServer?.terminate()
+    }
+
+    // MARK: - Run menu (IntelliJ IDEA macOS keymap)
+
+    @objc func runContext(_ sender: Any?) {
+        guard let editor = editorArea.selectedEditor, let target = editor.runTarget() else {
+            NSSound.beep()
+            editorArea.setStatus("Nothing to run: put the caret in a class with main() or a test")
+            return
+        }
+        runController.run(target, from: editor.url)
+    }
+
+    @objc func rerun(_ sender: Any?) {
+        runController.rerun()
+    }
+
+    @objc func stopRun(_ sender: Any?) {
+        runController.stop()
+    }
+
+    @objc func toggleConsole(_ sender: Any?) {
+        if editorArea.isBottomPanelVisible {
+            editorArea.hideBottomPanel()
+        } else {
+            editorArea.showBottomPanel(runController.console.view)
+        }
     }
 
     @objc func completeCode(_ sender: Any?) {
@@ -117,6 +157,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        runController.stop()
         languageServer?.stop()
         onClose?()
     }
