@@ -31,15 +31,26 @@ struct JavaToolchain: Sendable {
         }
     }
 
-    static func locate(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> JavaToolchain {
-        guard let (javaHome, javaVersion) = serverJavaCandidates(environment: environment)
+    /// Release builds carry jdtls and a trimmed Java runtime inside the app (see scripts/release.sh).
+    static func bundledJavaHome(in appBundle: URL) -> URL {
+        appBundle.appendingPathComponent("Contents/Resources/jre")
+    }
+
+    static func bundledJdtlsHome(in appBundle: URL) -> URL {
+        appBundle.appendingPathComponent("Contents/Resources/jdtls")
+    }
+
+    /// Environment overrides win, then the copies bundled in the app, then installed ones.
+    static func locate(environment: [String: String] = ProcessInfo.processInfo.environment,
+                       appBundle: URL = Bundle.main.bundleURL) throws -> JavaToolchain {
+        guard let (javaHome, javaVersion) = serverJavaCandidates(environment: environment, appBundle: appBundle)
             .lazy
             .compactMap({ home in majorVersion(ofJavaHome: home).map { (home, $0) } })
             .first(where: { $0.1 >= minimumServerJavaVersion }) else {
             throw LocateError.serverJavaNotFound
         }
 
-        let jdtlsHome = try locateJdtls(environment: environment)
+        let jdtlsHome = try locateJdtls(environment: environment, appBundle: appBundle)
         let plugins = jdtlsHome.appendingPathComponent("plugins")
         let launcher = (try? FileManager.default.contentsOfDirectory(atPath: plugins.path))?
             .first { $0.hasPrefix("org.eclipse.equinox.launcher_") && $0.hasSuffix(".jar") }
@@ -52,11 +63,12 @@ struct JavaToolchain: Sendable {
                              runtimes: installedRuntimes())
     }
 
-    private static func serverJavaCandidates(environment: [String: String]) -> [URL] {
+    private static func serverJavaCandidates(environment: [String: String], appBundle: URL) -> [URL] {
         var candidates: [URL] = []
         if let home = environment["MAYLOVEE_JDTLS_JAVA_HOME"] {
             candidates.append(URL(fileURLWithPath: home))
         }
+        candidates.append(bundledJavaHome(in: appBundle))
         if let home = javaHome(version: "\(minimumServerJavaVersion)+") {
             candidates.append(home)
         }
@@ -65,9 +77,13 @@ struct JavaToolchain: Sendable {
         return candidates
     }
 
-    private static func locateJdtls(environment: [String: String]) throws -> URL {
+    private static func locateJdtls(environment: [String: String], appBundle: URL) throws -> URL {
         if let home = environment["MAYLOVEE_JDTLS_HOME"] {
             return URL(fileURLWithPath: home)
+        }
+        let bundled = bundledJdtlsHome(in: appBundle)
+        if FileManager.default.fileExists(atPath: bundled.appendingPathComponent("plugins").path) {
+            return bundled
         }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MayloveE/jdtls")

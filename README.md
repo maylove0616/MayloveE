@@ -24,15 +24,34 @@ Keyboard shortcuts follow IntelliJ IDEA's macOS keymap.
 - **Workspace** — file tree with compact Java packages, tabs, and automatic refresh when files
   change outside the IDE.
 
-## Requirements
+## Download
+
+Get `MayloveE-<version>-macos-arm64.dmg` from
+[Releases](https://github.com/maylove0616/MayloveE/releases/latest), open it and drag MayloveE to
+Applications. It needs macOS 14 or later on Apple Silicon.
+
+The app includes jdtls and the Java runtime it runs on, so nothing else has to be installed for
+code intelligence. Running tests needs Maven if the project has no `mvnw`, and your projects compile
+against the JDKs installed on your Mac (see [JDKs](#jdks)).
+
+The app is not notarized by Apple, so macOS blocks the first launch. Open **System Settings ›
+Privacy & Security** and click **Open Anyway**, or remove the download quarantine:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/MayloveE.app
+```
+
+## Building from source
+
+Requirements:
 
 - macOS 14 or later (developed on Apple Silicon).
 - A Swift 6 toolchain: Xcode, or just the Command Line Tools (`xcode-select --install`).
-- **jdtls 1.63** and a **JDK 25 or newer** to run it (jdtls requires Java 25). Your projects can
-  still target older Java versions — see [JDKs](#jdks).
+- **jdtls 1.63** and a **JDK 25 or newer** to run it (jdtls requires Java 25). Development builds
+  use these installed copies; release builds bundle their own.
 - Maven, if the project has no `mvnw`, for running tests.
 
-## Installing jdtls
+### Installing jdtls
 
 MayloveE looks for jdtls in `~/Library/Application Support/MayloveE/jdtls/<version>/` and uses the
 newest version found there.
@@ -51,7 +70,7 @@ Then install a JDK 25+ to run it, for example:
 brew install openjdk
 ```
 
-## Building
+### Building
 
 ```bash
 scripts/bundle.sh
@@ -66,9 +85,19 @@ open build/MayloveE.app --args /path/to/your/java-project
 
 Without an argument, MayloveE asks for a folder.
 
+### Release builds
+
+```bash
+scripts/release.sh
+```
+
+This downloads jdtls (checksum-verified), creates a trimmed Java runtime with `jlink` from a JDK 25+
+(`JLINK_JDK`, or one found on the Mac), bundles both into the app, and writes
+`build/MayloveE-<version>-macos-arm64.dmg`. The version comes from `Support/Info.plist`.
+
 ## JDKs
 
-jdtls itself runs on the JDK 25+ described above. For your code, MayloveE registers every JDK known
+jdtls itself runs on Java 25+: the runtime bundled in release builds, or an installed JDK. For your code, MayloveE registers every JDK known
 to `/usr/libexec/java_home` with jdtls, which picks the one matching the project's Java version
 (for example `maven.compiler.source` 1.8 → a Java 8 JDK). Programs and tests run on that project JDK.
 
@@ -76,8 +105,8 @@ to `/usr/libexec/java_home` with jdtls, which picks the one matching the project
 
 | Environment variable | Purpose |
 |---|---|
-| `MAYLOVEE_JDTLS_HOME` | Use a jdtls installation from another directory. |
-| `MAYLOVEE_JDTLS_JAVA_HOME` | JDK used to run jdtls (must be 25+). |
+| `MAYLOVEE_JDTLS_HOME` | Use a jdtls installation from another directory instead of the bundled or installed one. |
+| `MAYLOVEE_JDTLS_JAVA_HOME` | JDK used to run jdtls instead of the bundled runtime (must be 25+). |
 | `MAYLOVEE_MAVEN` | Maven executable, when the project has no `mvnw` and `mvn` is not on `PATH`. |
 | `MAYLOVEE_GIT` | Git executable (default `/usr/bin/git`). |
 
@@ -130,4 +159,5 @@ Tests that start jdtls or Maven are skipped when jdtls is not installed.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Release builds include third-party components under their own licenses; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
