@@ -1,7 +1,7 @@
 import AppKit
 
 @MainActor
-final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
+final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
     let rootURL: URL
     var onClose: (() -> Void)?
 
@@ -16,28 +16,66 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate {
 
         let split = NSSplitViewController()
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: fileTree)
-        sidebarItem.minimumThickness = 180
+        sidebarItem.minimumThickness = 200
         sidebarItem.maximumThickness = 500
         split.addSplitViewItem(sidebarItem)
         split.addSplitViewItem(NSSplitViewItem(viewController: editorArea))
 
+        // Full-size content lets the sidebar run up under the unified toolbar, as in Xcode and Finder.
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                               backing: .buffered,
                               defer: false)
         window.contentViewController = split
         window.setContentSize(NSSize(width: 1200, height: 800))
+        split.splitView.setPosition(Self.sidebarWidth, ofDividerAt: 0)
         window.title = rootURL.lastPathComponent
         window.representedURL = rootURL
+        window.toolbarStyle = .unified
         window.center()
 
         super.init(window: window)
 
+        let toolbar = NSToolbar(identifier: "Workspace")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        window.toolbar = toolbar
         window.delegate = self
         fileTree.onOpenFile = { [weak self] url in
             self?.editorArea.open(url)
         }
         editorArea.languageServerProvider = { [unowned self] in self.javaLanguageServer() }
+        editorArea.onSelectionChange = { [weak self] url in self?.showSubtitle(for: url) }
+    }
+
+    private static let sidebarWidth: CGFloat = 260
+
+    /// The selected file's path relative to the project, like Xcode's window subtitle.
+    private func showSubtitle(for url: URL?) {
+        guard let url else {
+            window?.subtitle = ""
+            return
+        }
+        let rootPath = rootURL.standardizedFileURL.path + "/"
+        let path = url.isFileURL ? url.standardizedFileURL.path : url.lastPathComponent
+        window?.subtitle = path.hasPrefix(rootPath) ? String(path.dropFirst(rootPath.count)) : path
+    }
+
+    // MARK: - NSToolbarDelegate
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.toggleSidebar, .sidebarTrackingSeparator]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    /// Only system-provided items, which AppKit creates itself.
+    func toolbar(_ toolbar: NSToolbar,
+                 itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        nil
     }
 
     /// Started lazily so non-Java folders never pay for a JVM.

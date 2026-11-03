@@ -24,6 +24,7 @@ final class FileTreeViewController: NSViewController, NSOutlineViewDataSource, N
         outlineView.outlineTableColumn = column
         outlineView.headerView = nil
         outlineView.style = .sourceList
+        outlineView.indentationPerLevel = 12
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.target = self
@@ -82,9 +83,8 @@ final class FileTreeViewController: NSViewController, NSOutlineViewDataSource, N
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? NSTableCellView
             ?? makeCell()
         cell.textField?.stringValue = node.name
-        let icon = NSWorkspace.shared.icon(forFile: node.url.path)
-        icon.size = NSSize(width: 16, height: 16)
-        cell.imageView?.image = icon
+        cell.textField?.textColor = node.isDimmed ? .secondaryLabelColor : .labelColor
+        cell.imageView?.image = FileIcon.image(for: node.url, isDirectory: node.isDirectory, isDimmed: node.isDimmed)
         return cell
     }
 
@@ -97,6 +97,7 @@ final class FileTreeViewController: NSViewController, NSOutlineViewDataSource, N
         cell.identifier = Self.cellIdentifier
 
         let imageView = NSImageView()
+        imageView.imageScaling = .scaleNone
         let textField = NSTextField(labelWithString: "")
         textField.lineBreakMode = .byTruncatingMiddle
         for subview in [imageView, textField] as [NSView] {

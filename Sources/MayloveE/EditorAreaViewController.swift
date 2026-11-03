@@ -19,6 +19,8 @@ final class EditorAreaViewController: NSViewController {
 
     /// Supplies the workspace's Java language server; called the first time a Java file opens.
     var languageServerProvider: (() -> JavaLanguageServer)?
+    /// Called with the selected editor's URL, or nil when the last tab closes.
+    var onSelectionChange: ((URL?) -> Void)?
 
     var hasOpenTabs: Bool { !editors.isEmpty }
 
@@ -56,7 +58,8 @@ final class EditorAreaViewController: NSViewController {
         container.addSubview(statusLabel)
         contentView.addSubview(emptyLabel)
         NSLayoutConstraint.activate([
-            tabBar.topAnchor.constraint(equalTo: container.topAnchor),
+            // Below the toolbar: the window's content view extends under it.
+            tabBar.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor),
             tabBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             // Required: the split view's own constraints would otherwise outweigh the intrinsic height.
@@ -207,6 +210,7 @@ final class EditorAreaViewController: NSViewController {
         }
         reloadTabBar()
         editor.didBecomeVisible()
+        onSelectionChange?(editor.url)
     }
 
     private func closeTab(at index: Int) {
@@ -222,6 +226,7 @@ final class EditorAreaViewController: NSViewController {
 
         guard !editors.isEmpty, let previousSelection else {
             reloadTabBar()
+            onSelectionChange?(nil)
             return
         }
         if previousSelection > index {
@@ -253,7 +258,8 @@ final class EditorAreaViewController: NSViewController {
 
     private func reloadTabBar() {
         let items = editors.map {
-            TabBarItem(title: $0.url.lastPathComponent, toolTip: $0.url.path, isDirty: $0.isDirty)
+            TabBarItem(title: $0.url.lastPathComponent, toolTip: $0.url.path, isDirty: $0.isDirty,
+                       icon: FileIcon.image(for: $0.url))
         }
         tabBar.update(items: items, selectedIndex: selectedIndex)
         emptyLabel.isHidden = !editors.isEmpty
