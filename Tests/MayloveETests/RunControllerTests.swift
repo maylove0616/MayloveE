@@ -58,7 +58,7 @@ struct RunControllerTests {
 
     @Test func runsMainWithProjectJDKAndShowsStackTrace() async throws {
         let project = try TestJavaProject.make(files: ["src/main/java/demo/App.java": Self.app])
-        defer { try? FileManager.default.removeItem(at: project) }
+        defer { TestJavaProject.remove(project) }
         let file = project.appendingPathComponent("src/main/java/demo/App.java")
         let server = JavaLanguageServer(rootURL: project)
         server.start()
@@ -81,7 +81,7 @@ struct RunControllerTests {
     @Test func refusesToRunWhenBuildFails() async throws {
         let broken = Self.app.replacingOccurrences(of: "fail();", with: "undefinedCall();")
         let project = try TestJavaProject.make(files: ["src/main/java/demo/App.java": broken])
-        defer { try? FileManager.default.removeItem(at: project) }
+        defer { TestJavaProject.remove(project) }
         let file = project.appendingPathComponent("src/main/java/demo/App.java")
         let server = JavaLanguageServer(rootURL: project)
         server.start()
@@ -99,7 +99,7 @@ struct RunControllerTests {
 
     @Test func runsSingleTestMethodWithMaven() async throws {
         let project = try TestJavaProject.make(files: ["src/test/java/demo/CalculatorTest.java": Self.calculatorTest])
-        defer { try? FileManager.default.removeItem(at: project) }
+        defer { TestJavaProject.remove(project) }
         let file = project.appendingPathComponent("src/test/java/demo/CalculatorTest.java")
         let server = JavaLanguageServer(rootURL: project)
         defer { server.terminate() }

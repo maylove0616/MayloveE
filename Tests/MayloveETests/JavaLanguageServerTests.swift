@@ -22,7 +22,7 @@ struct JavaLanguageServerTests {
 
     @Test func diagnosticsCompletionNavigationAndHover() async throws {
         let project = try TestJavaProject.make(appSource: Self.appSource)
-        defer { try? FileManager.default.removeItem(at: project) }
+        defer { TestJavaProject.remove(project) }
         let greeter = project.appendingPathComponent("src/main/java/demo/Greeter.java")
         let app = project.appendingPathComponent("src/main/java/demo/App.java")
 
@@ -74,7 +74,7 @@ struct JavaLanguageServerTests {
         }
         """
         let project = try TestJavaProject.make(appSource: source)
-        defer { try? FileManager.default.removeItem(at: project) }
+        defer { TestJavaProject.remove(project) }
         let app = project.appendingPathComponent("src/main/java/demo/App.java")
 
         let server = JavaLanguageServer(rootURL: project)
@@ -115,7 +115,7 @@ struct JavaLanguageServerTests {
     @Test func editorShowsErrorsAndCompletesWithImport() async throws {
         _ = NSApplication.shared
         let project = try TestJavaProject.make(appSource: Self.appSource)
-        defer { try? FileManager.default.removeItem(at: project) }
+        defer { TestJavaProject.remove(project) }
         let app = project.appendingPathComponent("src/main/java/demo/App.java")
 
         let server = JavaLanguageServer(rootURL: project)
@@ -165,7 +165,7 @@ struct JavaLanguageServerTests {
     @Test func commandClickOpensDeclaration() async throws {
         _ = NSApplication.shared
         let project = try TestJavaProject.make(appSource: Self.appSource)
-        defer { try? FileManager.default.removeItem(at: project) }
+        defer { TestJavaProject.remove(project) }
         let app = project.appendingPathComponent("src/main/java/demo/App.java")
 
         let server = JavaLanguageServer(rootURL: project)

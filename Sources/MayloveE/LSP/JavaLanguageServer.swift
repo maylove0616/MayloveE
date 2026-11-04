@@ -188,12 +188,16 @@ final class JavaLanguageServer {
     }
 
     /// jdtls keeps per-project indexes here; one directory per workspace root.
-    private static func workspaceDataDirectory(for rootURL: URL) throws -> URL {
+    nonisolated static func workspaceDataDirectoryURL(for rootURL: URL) throws -> URL {
         let digest = SHA256.hash(data: Data(rootURL.standardizedFileURL.path.utf8))
         let suffix = digest.prefix(8).map { String(format: "%02x", $0) }.joined()
         let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
                                                  appropriateFor: nil, create: true)
-        let directory = caches.appendingPathComponent("MayloveE/jdtls-workspaces/\(rootURL.lastPathComponent)-\(suffix)")
+        return caches.appendingPathComponent("MayloveE/jdtls-workspaces/\(rootURL.lastPathComponent)-\(suffix)")
+    }
+
+    private static func workspaceDataDirectory(for rootURL: URL) throws -> URL {
+        let directory = try workspaceDataDirectoryURL(for: rootURL)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }

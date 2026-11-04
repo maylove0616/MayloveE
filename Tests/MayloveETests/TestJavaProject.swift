@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import MayloveE
 
 /// A throwaway Maven project for language-server tests.
 enum TestJavaProject {
@@ -68,6 +69,15 @@ enum TestJavaProject {
             try contents.write(to: url, atomically: true, encoding: .utf8)
         }
         return root
+    }
+
+    /// Deletes the project and the index jdtls built for it, which would otherwise pile up in the
+    /// user's Caches directory (about 40 MB per project).
+    static func remove(_ project: URL) {
+        try? FileManager.default.removeItem(at: project)
+        if let data = try? JavaLanguageServer.workspaceDataDirectoryURL(for: project) {
+            try? FileManager.default.removeItem(at: data)
+        }
     }
 
     @MainActor
