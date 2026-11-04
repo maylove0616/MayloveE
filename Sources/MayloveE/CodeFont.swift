@@ -3,7 +3,7 @@ import AppKit
 /// The monospaced font for code (editor, console, diff), adjustable with ⌘= / ⌘- and remembered.
 @MainActor
 enum CodeFont {
-    static let defaultSize: CGFloat = 15
+    static let defaultSize: CGFloat = 16
     static let sizeRange: ClosedRange<CGFloat> = 9...32
     /// Posted after the size changes; views showing code re-apply their fonts.
     static let didChange = Notification.Name("MayloveE.CodeFontDidChange")

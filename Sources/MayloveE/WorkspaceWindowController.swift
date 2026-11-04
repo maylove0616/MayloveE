@@ -13,13 +13,20 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
     private var fileWatcher: FileWatcher?
     private var languageServer: JavaLanguageServer?
     private lazy var runController = makeRunController()
+    /// What ▶ runs for the caret, shown in the toolbar like IntelliJ's run configuration widget.
+    private let runTargetButton = NSButton(title: "Current File", target: nil, action: nil)
+    private let runButton = WorkspaceWindowController.toolbarButton(
+        symbol: "play.fill", color: .systemGreen, toolTip: "Run Context Configuration (⌃⇧R)")
+    private let stopButton = WorkspaceWindowController.toolbarButton(
+        symbol: "stop.fill", color: .systemRed, toolTip: "Stop (⌘F2)")
 
     init(rootURL: URL) {
         self.rootURL = rootURL
 
         let fileTree = FileTreeViewController(rootURL: rootURL)
         let commitView = CommitViewController()
-        let sidebar = SidebarViewController(project: fileTree, commit: commitView)
+        let sidebar = SidebarViewController(project: fileTree, commit: commitView,
+                                            actions: fileTree.makeActionsView())
         self.fileTree = fileTree
         self.sidebar = sidebar
 
@@ -53,11 +60,15 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         toolbar.displayMode = .iconOnly
         window.toolbar = toolbar
         window.delegate = self
+        fileTree.currentFile = { [weak self] in self?.editorArea.selectedEditor?.url }
+        fileTree.onShowTree = { [weak sidebar] in sidebar?.select(.project) }
         fileTree.onOpenFile = { [weak self] url in
             self?.editorArea.open(url)
         }
         editorArea.languageServerProvider = { [unowned self] in self.javaLanguageServer() }
         editorArea.onSelectionChange = { [weak self] url in self?.showSubtitle(for: url) }
+        editorArea.onCaretChange = { [weak self] in self?.updateRunTarget() }
+        configureRunButtons()
         git.onRepositoryChange = { [weak self] repository in self?.watchFiles(gitDirectoryOf: repository) }
         watchFiles(gitDirectoryOf: nil)
     }
@@ -96,24 +107,77 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
     // MARK: - NSToolbarDelegate
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, Self.branchItem, .flexibleSpace]
+        [.toggleSidebar, .sidebarTrackingSeparator, Self.branchItem, .flexibleSpace,
+         Self.runTargetItem, Self.runItem, Self.stopItem]
     }
 
     private static let branchItem = NSToolbarItem.Identifier("Branch")
+    private static let runTargetItem = NSToolbarItem.Identifier("RunTarget")
+    private static let runItem = NSToolbarItem.Identifier("Run")
+    private static let stopItem = NSToolbarItem.Identifier("Stop")
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbarDefaultItemIdentifiers(toolbar)
     }
 
-    /// The branch widget; the other items are system-provided.
     func toolbar(_ toolbar: NSToolbar,
                  itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        guard itemIdentifier == Self.branchItem else { return nil }
+        let views: [NSToolbarItem.Identifier: (label: String, view: NSView)] = [
+            Self.branchItem: ("Branch", git.branchButton),
+            Self.runTargetItem: ("Run Configuration", runTargetButton),
+            Self.runItem: ("Run", runButton),
+            Self.stopItem: ("Stop", stopButton),
+        ]
+        guard let entry = views[itemIdentifier] else { return nil }
         let item = NSToolbarItem(itemIdentifier: itemIdentifier)
-        item.label = "Branch"
-        item.view = git.branchButton
+        item.label = entry.label
+        item.view = entry.view
         return item
+    }
+
+    private static func toolbarButton(symbol: String, color: NSColor, toolTip: String) -> NSButton {
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: toolTip)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+        let button = NSButton(image: image ?? NSImage(), target: nil, action: nil)
+        button.bezelStyle = .toolbar
+        button.contentTintColor = color
+        button.toolTip = toolTip
+        return button
+    }
+
+    private func configureRunButtons() {
+        runTargetButton.bezelStyle = .toolbar
+        runTargetButton.imagePosition = .imageLeading
+        runTargetButton.target = self
+        runTargetButton.action = #selector(runContext(_:))
+        runButton.target = self
+        runButton.action = #selector(runContext(_:))
+        stopButton.target = self
+        stopButton.action = #selector(stopRun(_:))
+        stopButton.isEnabled = false
+        updateRunTarget()
+    }
+
+    /// Shows what Run would execute at the caret; disabled when there is nothing to run.
+    private func updateRunTarget() {
+        let target = editorArea.selectedEditor?.runTarget()
+        runTargetButton.title = target?.title ?? "Current File"
+        runTargetButton.image = Self.runTargetImage(for: target)
+        runTargetButton.toolTip = target.map { "Run \($0.title) (⌃⇧R)" } ?? "Nothing to run at the caret"
+        runTargetButton.isEnabled = target != nil
+        runButton.isEnabled = target != nil
+    }
+
+    private static func runTargetImage(for target: RunTarget?) -> NSImage? {
+        let (symbol, color): (String, NSColor) = switch target {
+        case .mainClass: ("cup.and.saucer.fill", .systemOrange)
+        case .testClass, .testMethod: ("checkmark.diamond.fill", .systemGreen)
+        case nil: ("doc", .secondaryLabelColor)
+        }
+        return NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [color])))
     }
 
     /// Started lazily so non-Java folders never pay for a JVM.
@@ -146,6 +210,7 @@ final class WorkspaceWindowController: NSWindowController, NSWindowDelegate, NST
         controller.onHideConsole = { [unowned self] in self.editorArea.hideBottomPanel() }
         controller.onOpenLocation = { [unowned self] location in self.editorArea.navigate(to: location) }
         controller.saveAll = { [unowned self] in self.editorArea.saveAll() }
+        controller.console.onRunningChange = { [unowned self] running in self.stopButton.isEnabled = running }
         return controller
     }
 

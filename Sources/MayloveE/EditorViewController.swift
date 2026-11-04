@@ -10,6 +10,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
     var onDirtyChange: (() -> Void)?
     /// Asks the editor area to open a location, possibly in another file.
     var onNavigate: ((LSPLocation) -> Void)?
+    /// Called at most once per run loop pass after the caret moved or the text changed.
+    var onCaretChange: (() -> Void)?
 
     private(set) var isDirty = false {
         didSet {
@@ -43,6 +45,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         }
     }
     private var isGitMarkersPending = false
+    private var isCaretChangePending = false
 
     /// Opens a file from disk for editing.
     convenience init(url: URL, languageServer: JavaLanguageServer?) {
@@ -290,6 +293,41 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         }
     }
 
+    /// One-based line and column of the caret, and the number of selected characters.
+    var caretLocation: (line: Int, column: Int, selectedLength: Int) {
+        let selection = textView.selectedRange()
+        let position = lineIndex.position(of: selection.location)
+        return (position.line + 1, position.character + 1, selection.length)
+    }
+
+    /// "CRLF" when the file uses Windows line endings, otherwise "LF".
+    var lineSeparatorName: String {
+        textView.string.contains("\r\n") ? "CRLF" : "LF"
+    }
+
+    /// Declarations enclosing the caret, outermost first; empty for non-Java files.
+    func breadcrumbs() -> [Breadcrumb] {
+        guard highlighter != nil else { return [] }
+        return BreadcrumbResolver.resolve(text: textView.string, caret: textView.selectedRange().location)
+    }
+
+    /// Moves the caret to a range in this file, e.g. from a breadcrumb.
+    func reveal(_ range: NSRange) {
+        textView.setSelectedRange(NSRange(location: range.location, length: 0))
+        textView.scrollRangeToVisible(range)
+        view.window?.makeFirstResponder(textView)
+    }
+
+    private func scheduleCaretChange() {
+        guard !isCaretChangePending else { return }
+        isCaretChangePending = true
+        Task { [weak self] in
+            guard let self else { return }
+            self.isCaretChangePending = false
+            self.onCaretChange?()
+        }
+    }
+
     /// What Run should execute for the caret position, if anything; only for project sources.
     func runTarget() -> RunTarget? {
         guard isJavaSource, isEditable else { return nil }
@@ -432,9 +470,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate {
         version += 1
         scheduleSync()
         scheduleGitMarkers()
+        scheduleCaretChange()
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
         completion?.selectionDidChange()
+        gutter?.needsDisplay = true
+        scheduleCaretChange()
     }
 }

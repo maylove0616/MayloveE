@@ -71,6 +71,9 @@ final class LineNumberGutter: NSRulerView {
         // ruler, so painting `rect` would cover the text. Only paint our own bounds.
         NSColor.textBackgroundColor.setFill()
         bounds.fill()
+        // A faint tint sets the gutter apart from the text, as in IntelliJ IDEA.
+        NSColor.labelColor.withAlphaComponent(0.025).setFill()
+        bounds.fill(using: .sourceOver)
         NSColor.separatorColor.setFill()
         NSRect(x: bounds.maxX - 1, y: bounds.minY, width: 1, height: bounds.height).fill()
 
@@ -80,8 +83,12 @@ final class LineNumberGutter: NSRulerView {
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.secondaryLabelColor,
+            .foregroundColor: NSColor.tertiaryLabelColor,
         ]
+        var currentLineAttributes = attributes
+        currentLineAttributes[.foregroundColor] = NSColor.labelColor
+        let selection = textView.selectedRange()
+        let currentLine = selection.length == 0 ? lineIndex.line(containing: selection.location) : nil
         let textLength = textView.textStorage?.length ?? 0
         let glyphRange = layoutManager.glyphRange(forBoundingRect: textView.visibleRect, in: textContainer)
         let visibleChars = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
@@ -102,10 +109,16 @@ final class LineNumberGutter: NSRulerView {
 
             let origin = convert(NSPoint(x: 0, y: fragment.minY + textView.textContainerOrigin.y), from: textView)
             let label = (lineLabels.map { line < $0.count ? $0[line] : "" } ?? String(line + 1)) as NSString
-            let size = label.size(withAttributes: attributes)
+            let isCurrent = line == currentLine
+            if isCurrent {
+                CodeTextView.currentLineColor.setFill()
+                NSRect(x: 0, y: origin.y, width: bounds.width - 1, height: fragment.height).fill(using: .sourceOver)
+            }
+            let lineAttributes = isCurrent ? currentLineAttributes : attributes
+            let size = label.size(withAttributes: lineAttributes)
             label.draw(at: NSPoint(x: ruleThickness - size.width - 12,
                                    y: origin.y + (fragment.height - size.height) / 2),
-                       withAttributes: attributes)
+                       withAttributes: lineAttributes)
             drawChangeMarker(forLine: line, top: origin.y, height: fragment.height)
             line += 1
         }

@@ -9,7 +9,7 @@ struct ListPopupRow {
 /// It never takes focus; the text view forwards navigation keys via `handleKey`.
 @MainActor
 final class ListPopup: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-    private static let rowHeight: CGFloat = 20
+    private static let rowHeight: CGFloat = 22
     private static let maxVisibleRows = 10
     private static let width: CGFloat = 560
 
@@ -134,12 +134,12 @@ final class ListPopup: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
         let item = rows[row]
         let text = NSMutableAttributedString(string: item.title, attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
             .foregroundColor: NSColor.labelColor,
         ])
         if let detail = item.detail, !detail.isEmpty {
             text.append(NSAttributedString(string: "   " + detail, attributes: [
-                .font: NSFont.systemFont(ofSize: 11),
+                .font: NSFont.systemFont(ofSize: 12),
                 .foregroundColor: NSColor.secondaryLabelColor,
             ]))
         }

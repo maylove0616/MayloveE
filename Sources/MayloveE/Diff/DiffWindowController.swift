@@ -66,7 +66,7 @@ final class DiffWindowController: NSWindowController, NSWindowDelegate {
                                   ? "Contents are identical"
                                   : "\(diff.blocks.count) difference\(diff.blocks.count == 1 ? "" : "s")")
         summary.textColor = .secondaryLabelColor
-        summary.font = .systemFont(ofSize: 11)
+        summary.font = .systemFont(ofSize: 12)
 
         let header = NSStackView(views: [previous, next, summary])
         header.orientation = .horizontal
@@ -163,7 +163,7 @@ private final class DiffPane: NSView {
         super.init(frame: .zero)
 
         let caption = NSTextField(labelWithString: label)
-        caption.font = .systemFont(ofSize: 11, weight: .medium)
+        caption.font = .systemFont(ofSize: 12, weight: .medium)
         caption.textColor = .secondaryLabelColor
         caption.lineBreakMode = .byTruncatingMiddle
 

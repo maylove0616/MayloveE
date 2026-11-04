@@ -12,6 +12,8 @@ final class ConsoleViewController: NSViewController, NSTextViewDelegate {
     var onRerun: (() -> Void)?
     var onStop: (() -> Void)?
     var onClose: (() -> Void)?
+    /// Called when a run starts or finishes, e.g. to enable the toolbar's Stop button.
+    var onRunningChange: ((Bool) -> Void)?
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let textView = NSTextView(usingTextLayoutManager: false)
@@ -22,7 +24,7 @@ final class ConsoleViewController: NSViewController, NSTextViewDelegate {
     var text: String { textView.string }
 
     override func loadView() {
-        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         titleLabel.lineBreakMode = .byTruncatingTail
 
         let rerunButton = Self.button(symbol: "arrow.clockwise", tooltip: "Rerun (⌃R)", action: #selector(rerunClicked))
@@ -103,6 +105,7 @@ final class ConsoleViewController: NSViewController, NSTextViewDelegate {
     func setRunning(_ running: Bool) {
         loadViewIfNeeded()
         stopButton.isEnabled = running
+        onRunningChange?(running)
     }
 
     func append(_ text: String, stream: RunSession.Stream) {

@@ -33,7 +33,7 @@ enum FileIcon {
         let style = isDirectory ? folderStyle(for: url) : (byExtension[url.pathExtension.lowercased()] ?? file)
         let color = isDimmed ? NSColor.tertiaryLabelColor : style.color
         return NSImage(systemSymbolName: style.symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
                 .applying(NSImage.SymbolConfiguration(paletteColors: [color])))
     }
 

@@ -7,12 +7,19 @@ final class EditorAreaViewController: NSViewController {
     private static let logger = Logger(subsystem: "MayloveE", category: "EditorArea")
 
     private let tabBar = TabBarView()
+    private let breadcrumbBar = BreadcrumbBar()
+    private var breadcrumbHeight: NSLayoutConstraint!
+    private var tabBarHeight: NSLayoutConstraint!
     /// Editors on top, the bottom panel (console) below.
     private let splitView = NSSplitView()
     private let contentView = NSView()
     private let bottomPanel = NSView()
     private let emptyLabel = NSTextField(labelWithString: "Double-click a file to open it")
     private let statusLabel = NSTextField(labelWithString: "")
+    /// Caret position, line separator, encoding and indent of the selected editor.
+    private let editorInfo = NSStackView()
+    private let caretLabel = EditorAreaViewController.infoLabel()
+    private let lineSeparatorLabel = EditorAreaViewController.infoLabel()
 
     private var editors: [EditorViewController] = []
     private var selectedIndex: Int?
@@ -21,6 +28,8 @@ final class EditorAreaViewController: NSViewController {
     var languageServerProvider: (() -> JavaLanguageServer)?
     /// Called with the selected editor's URL, or nil when the last tab closes.
     var onSelectionChange: ((URL?) -> Void)?
+    /// Called after the selected editor's caret moved or another editor was selected.
+    var onCaretChange: (() -> Void)?
     /// Git status of a file, for coloring its tab title.
     var gitStatus: ((URL) -> GitFileChange.Kind?)?
     /// The committed contents of a file, for the gutter's change bars.
@@ -35,11 +44,25 @@ final class EditorAreaViewController: NSViewController {
     override func loadView() {
         let container = NSView()
         emptyLabel.textColor = .secondaryLabelColor
-        statusLabel.font = .systemFont(ofSize: 11)
+        statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingTail
         tabBar.onSelect = { [weak self] index in self?.select(index) }
         tabBar.onClose = { [weak self] index in self?.closeTab(at: index) }
+        breadcrumbBar.onSelect = { [weak self] crumb in self?.selectedEditor?.reveal(crumb.nameRange) }
+
+        // Only UTF-8 files are editable, and Tab inserts `Indentation.unit`.
+        let encodingLabel = Self.infoLabel()
+        encodingLabel.stringValue = "UTF-8"
+        let indentLabel = Self.infoLabel()
+        indentLabel.stringValue = "\(Indentation.unit.count) spaces"
+        for label in [caretLabel, lineSeparatorLabel, encodingLabel, indentLabel] {
+            editorInfo.addArrangedSubview(label)
+        }
+        editorInfo.spacing = 16
+        editorInfo.isHidden = true
+        breadcrumbBar.isHidden = true
+        statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let statusSeparator = NSBox()
         statusSeparator.boxType = .separator
@@ -53,10 +76,15 @@ final class EditorAreaViewController: NSViewController {
         splitView.setHoldingPriority(.defaultLow + 10, forSubviewAt: 1)
         bottomPanel.isHidden = true
 
-        for subview in [tabBar, splitView, emptyLabel, statusSeparator, statusLabel] as [NSView] {
+        for subview in [tabBar, breadcrumbBar, splitView, emptyLabel, statusSeparator, statusLabel, editorInfo]
+            as [NSView] {
             subview.translatesAutoresizingMaskIntoConstraints = false
         }
         container.addSubview(tabBar)
+        container.addSubview(breadcrumbBar)
+        container.addSubview(editorInfo)
+        breadcrumbHeight = breadcrumbBar.heightAnchor.constraint(equalToConstant: 0)
+        tabBarHeight = tabBar.heightAnchor.constraint(equalToConstant: 0)
         container.addSubview(splitView)
         container.addSubview(statusSeparator)
         container.addSubview(statusLabel)
@@ -67,22 +95,56 @@ final class EditorAreaViewController: NSViewController {
             tabBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             // Required: the split view's own constraints would otherwise outweigh the intrinsic height.
-            tabBar.heightAnchor.constraint(equalToConstant: TabBarView.height),
-            splitView.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
+            tabBarHeight,
+            breadcrumbBar.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
+            breadcrumbBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            breadcrumbBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            breadcrumbHeight,
+            splitView.topAnchor.constraint(equalTo: breadcrumbBar.bottomAnchor),
             splitView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             splitView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             splitView.bottomAnchor.constraint(equalTo: statusSeparator.topAnchor),
             statusSeparator.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             statusSeparator.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            statusSeparator.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -22),
+            statusSeparator.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -26),
             statusLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
-            statusLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
-            statusLabel.centerYAnchor.constraint(equalTo: container.bottomAnchor, constant: -11),
+            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: editorInfo.leadingAnchor, constant: -16),
+            statusLabel.centerYAnchor.constraint(equalTo: container.bottomAnchor, constant: -13),
+            editorInfo.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+            editorInfo.centerYAnchor.constraint(equalTo: statusLabel.centerYAnchor),
             emptyLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
         ])
         view = container
         reloadTabBar()
+    }
+
+    private static func infoLabel() -> NSTextField {
+        let label = NSTextField(labelWithString: "")
+        label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        label.textColor = .secondaryLabelColor
+        return label
+    }
+
+    /// Refreshes the breadcrumbs and the status bar's editor details for the selected editor.
+    private func updateCaretInfo() {
+        guard let editor = selectedEditor else {
+            editorInfo.isHidden = true
+            breadcrumbBar.isHidden = true
+            breadcrumbHeight.constant = 0
+            onCaretChange?()
+            return
+        }
+        let caret = editor.caretLocation
+        caretLabel.stringValue = caret.selectedLength > 0
+            ? "\(caret.line):\(caret.column) (\(caret.selectedLength) chars)"
+            : "\(caret.line):\(caret.column)"
+        lineSeparatorLabel.stringValue = editor.lineSeparatorName
+        editorInfo.isHidden = false
+        breadcrumbBar.update(file: editor.url, crumbs: editor.breadcrumbs())
+        breadcrumbBar.isHidden = false
+        breadcrumbHeight.constant = BreadcrumbBar.height
+        onCaretChange?()
     }
 
     func setStatus(_ text: String) {
@@ -206,6 +268,10 @@ final class EditorAreaViewController: NSViewController {
     private func add(_ editor: EditorViewController) {
         editor.onDirtyChange = { [weak self] in self?.reloadTabBar() }
         editor.onNavigate = { [weak self] location in self?.navigate(to: location) }
+        editor.onCaretChange = { [weak self, weak editor] in
+            guard let self, let editor, editor === self.selectedEditor else { return }
+            self.updateCaretInfo()
+        }
         addChild(editor)
         editors.append(editor)
         loadGitBase(for: editor)
@@ -264,6 +330,7 @@ final class EditorAreaViewController: NSViewController {
         }
         reloadTabBar()
         editor.didBecomeVisible()
+        updateCaretInfo()
         onSelectionChange?(editor.url)
     }
 
@@ -280,6 +347,7 @@ final class EditorAreaViewController: NSViewController {
 
         guard !editors.isEmpty, let previousSelection else {
             reloadTabBar()
+            updateCaretInfo()
             onSelectionChange?(nil)
             return
         }
@@ -317,6 +385,9 @@ final class EditorAreaViewController: NSViewController {
         }
         tabBar.update(items: items, selectedIndex: selectedIndex)
         emptyLabel.isHidden = !editors.isEmpty
+        // No empty strip above the placeholder when nothing is open.
+        tabBar.isHidden = editors.isEmpty
+        tabBarHeight.constant = editors.isEmpty ? 0 : TabBarView.height
     }
 }
 

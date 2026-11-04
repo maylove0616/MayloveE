@@ -11,10 +11,13 @@ final class SidebarViewController: NSViewController {
     private let panes: [NSViewController]
     private let switcher = NSSegmentedControl()
     private let contentView = NSView()
+    /// Buttons right of the switcher, e.g. the file tree's actions.
+    private let actionsView: NSView?
     private(set) var selectedPane = Pane.project
 
-    init(project: NSViewController, commit: NSViewController) {
+    init(project: NSViewController, commit: NSViewController, actions: NSView? = nil) {
         panes = [project, commit]
+        actionsView = actions
         super.init(nibName: nil, bundle: nil)
         panes.forEach(addChild)
     }
@@ -31,21 +34,27 @@ final class SidebarViewController: NSViewController {
         switcher.setToolTip("Project (⌘1)", forSegment: Pane.project.rawValue)
         switcher.setToolTip("Commit (⌘0)", forSegment: Pane.commit.rawValue)
         switcher.segmentDistribution = .fillEqually
-        switcher.controlSize = .small
+        switcher.controlSize = .regular
         switcher.target = self
         switcher.action = #selector(switcherChanged)
 
+        let header = NSStackView(views: [switcher] + (actionsView.map { [$0] } ?? []))
+        header.orientation = .horizontal
+        header.spacing = 8
+        actionsView?.setContentHuggingPriority(.required, for: .horizontal)
+        actionsView?.setContentCompressionResistancePriority(.required, for: .horizontal)
+
         let container = NSView()
-        for subview in [switcher, contentView] as [NSView] {
+        for subview in [header, contentView] as [NSView] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(subview)
         }
         NSLayoutConstraint.activate([
             // Below the toolbar: the sidebar extends under the titlebar.
-            switcher.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor, constant: 6),
-            switcher.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
-            switcher.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
-            contentView.topAnchor.constraint(equalTo: switcher.bottomAnchor, constant: 6),
+            header.topAnchor.constraint(equalTo: container.safeAreaLayoutGuide.topAnchor, constant: 6),
+            header.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            header.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            contentView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 6),
             contentView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             contentView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             contentView.bottomAnchor.constraint(equalTo: container.bottomAnchor),

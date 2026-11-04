@@ -11,7 +11,7 @@ struct TabBarItem {
 
 @MainActor
 final class TabBarView: NSView {
-    static let height: CGFloat = 32
+    static let height: CGFloat = 34
 
     var onSelect: ((Int) -> Void)?
     var onClose: ((Int) -> Void)?
@@ -113,7 +113,7 @@ private final class TabView: NSView {
         iconView.imageScaling = .scaleNone
 
         let label = NSTextField(labelWithString: item.title)
-        label.font = .systemFont(ofSize: 12, weight: isSelected ? .medium : .regular)
+        label.font = .systemFont(ofSize: 13, weight: isSelected ? .medium : .regular)
         label.textColor = item.titleColor ?? (isSelected ? .labelColor : .secondaryLabelColor)
 
         closeButton.isBordered = false

@@ -25,7 +25,7 @@ final class GitLogViewController: NSViewController, NSTableViewDataSource, NSTab
     }()
 
     override func loadView() {
-        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         let refresh = Self.button(symbol: "arrow.clockwise", tooltip: "Refresh", action: #selector(refreshClicked))
         let close = Self.button(symbol: "xmark", tooltip: "Hide (⌘9)", action: #selector(closeClicked))
         for button in [refresh, close] { button.target = self }
@@ -39,7 +39,7 @@ final class GitLogViewController: NSViewController, NSTableViewDataSource, NSTab
         fileTable.target = self
         fileTable.doubleAction = #selector(fileDoubleClicked)
 
-        detailLabel.font = .systemFont(ofSize: 11)
+        detailLabel.font = .systemFont(ofSize: 12)
         detailLabel.textColor = .secondaryLabelColor
         detailLabel.isSelectable = true
 
@@ -187,13 +187,13 @@ final class GitLogViewController: NSViewController, NSTableViewDataSource, NSTab
             .map { $0.replacingOccurrences(of: "HEAD -> ", with: "") }
         for ref in refs where ref != "HEAD" {
             text.append(NSAttributedString(string: " \(ref) ", attributes: [
-                .font: NSFont.systemFont(ofSize: 10, weight: .semibold),
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
                 .foregroundColor: ref.contains("/") ? NSColor.systemPurple : NSColor.systemGreen,
             ]))
             text.append(NSAttributedString(string: " "))
         }
         text.append(NSAttributedString(string: commit.subject, attributes: [
-            .font: NSFont.systemFont(ofSize: 12),
+            .font: NSFont.systemFont(ofSize: 13),
             .foregroundColor: NSColor.labelColor,
         ]))
         return text
@@ -209,7 +209,7 @@ final class GitLogViewController: NSViewController, NSTableViewDataSource, NSTab
         table.style = .plain
         table.usesAlternatingRowBackgroundColors = true
         table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
-        table.rowSizeStyle = .small
+        table.rowSizeStyle = .medium
         table.dataSource = self
         table.delegate = self
     }
@@ -229,7 +229,7 @@ final class GitLogViewController: NSViewController, NSTableViewDataSource, NSTab
         imageView.imageScaling = .scaleNone
         let label = NSTextField(labelWithString: "")
         label.lineBreakMode = .byTruncatingTail
-        label.font = .systemFont(ofSize: 12)
+        label.font = .systemFont(ofSize: 13)
         // The label truncates rather than squeezing the icon.
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         imageView.setContentCompressionResistancePriority(.required, for: .horizontal)

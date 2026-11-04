@@ -2,7 +2,7 @@ import AppKit
 
 /// Turns jdtls hover content (signature + Javadoc as Markdown) into styled text.
 enum HoverRenderer {
-    private static let fontSize: CGFloat = 12
+    private static let fontSize: CGFloat = 13
 
     static func render(_ parts: [HoverPart]) -> NSAttributedString {
         let result = NSMutableAttributedString()

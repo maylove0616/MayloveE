@@ -100,6 +100,8 @@ final class CommitViewController: NSViewController, NSOutlineViewDataSource, NSO
         outlineView.headerView = nil
         outlineView.style = .sourceList
         outlineView.indentationPerLevel = 8
+        outlineView.rowSizeStyle = .custom
+        outlineView.rowHeight = 24
         outlineView.allowsMultipleSelection = true
         outlineView.dataSource = self
         outlineView.delegate = self
@@ -115,7 +117,7 @@ final class CommitViewController: NSViewController, NSOutlineViewDataSource, NSO
         emptyLabel.textColor = .secondaryLabelColor
 
         messageView.isRichText = false
-        messageView.font = .systemFont(ofSize: 12)
+        messageView.font = .systemFont(ofSize: 13)
         messageView.textContainerInset = NSSize(width: 4, height: 6)
         messageView.delegate = self
         messageView.isAutomaticQuoteSubstitutionEnabled = false
@@ -128,7 +130,7 @@ final class CommitViewController: NSViewController, NSOutlineViewDataSource, NSO
         messageScroll.hasVerticalScroller = true
         messageScroll.borderType = .lineBorder
         placeholder.textColor = .placeholderTextColor
-        placeholder.font = .systemFont(ofSize: 12)
+        placeholder.font = .systemFont(ofSize: 13)
 
         amendCheckbox.target = self
         amendCheckbox.action = #selector(amendToggled)
@@ -431,7 +433,7 @@ private final class ChangeCellView: NSTableCellView {
         titleLabel.lineBreakMode = .byTruncatingMiddle
         detailLabel.lineBreakMode = .byTruncatingHead
         detailLabel.textColor = .secondaryLabelColor
-        detailLabel.font = .systemFont(ofSize: 11)
+        detailLabel.font = .systemFont(ofSize: 12)
         titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -460,7 +462,7 @@ private final class ChangeCellView: NSTableCellView {
         iconView.isHidden = icon == nil
         titleLabel.stringValue = title
         titleLabel.textColor = titleColor
-        titleLabel.font = .systemFont(ofSize: 13, weight: isBold ? .semibold : .regular)
+        titleLabel.font = .systemFont(ofSize: 14, weight: isBold ? .semibold : .regular)
         detailLabel.stringValue = detail
         toolTip = nil
     }

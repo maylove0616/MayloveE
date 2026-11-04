@@ -23,6 +23,121 @@ final class CodeTextView: NSTextView {
 
     private var hoverTrackingArea: NSTrackingArea?
 
+    static let currentLineColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor.white.withAlphaComponent(0.05)
+            : NSColor.black.withAlphaComponent(0.04)
+    }
+    private static let indentGuideColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor.white.withAlphaComponent(0.09)
+            : NSColor.black.withAlphaComponent(0.08)
+    }
+
+    /// The caret line's rect in view coordinates, or nil while text is selected.
+    var currentLineRect: NSRect? {
+        guard let layoutManager, selectedRange().length == 0 else { return nil }
+        let caret = selectedRange().location
+        let fragment: NSRect
+        if caret >= (textStorage?.length ?? 0), !layoutManager.extraLineFragmentRect.isEmpty {
+            fragment = layoutManager.extraLineFragmentRect
+        } else {
+            let glyphs = layoutManager.glyphRange(forCharacterRange: NSRange(location: caret, length: 0),
+                                                  actualCharacterRange: nil)
+            guard layoutManager.numberOfGlyphs > 0 else { return nil }
+            let glyph = min(glyphs.location, layoutManager.numberOfGlyphs - 1)
+            fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        }
+        return NSRect(x: bounds.minX, y: fragment.minY + textContainerOrigin.y, width: bounds.width,
+                      height: fragment.height)
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        let oldLine = currentLineRect
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        for rect in [oldLine, currentLineRect].compactMap({ $0 }) {
+            setNeedsDisplay(rect)
+        }
+    }
+
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        if let line = currentLineRect, line.intersects(rect) {
+            Self.currentLineColor.setFill()
+            line.intersection(rect).fill(using: .sourceOver)
+        }
+        drawIndentGuides(in: rect)
+    }
+
+    /// Thin vertical lines at each indent level inside a block, like IntelliJ's indent guides.
+    /// Blank lines continue the guides of the lines around them.
+    private func drawIndentGuides(in rect: NSRect) {
+        guard let layoutManager, let textContainer, let font else { return }
+        let text = string as NSString
+        guard text.length > 0 else { return }
+        let unit = Indentation.unit.count
+        let columnWidth = (" " as NSString).size(withAttributes: [.font: font]).width
+        let originX = textContainerOrigin.x + textContainer.lineFragmentPadding
+
+        let containerRect = rect.offsetBy(dx: -textContainerOrigin.x, dy: -textContainerOrigin.y)
+        let glyphs = layoutManager.glyphRange(forBoundingRect: containerRect, in: textContainer)
+        let visible = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+
+        Self.indentGuideColor.setFill()
+        var lineStart = text.lineRange(for: NSRange(location: visible.location, length: 0)).location
+        while lineStart < text.length, lineStart <= NSMaxRange(visible) {
+            let lineRange = text.lineRange(for: NSRange(location: lineStart, length: 0))
+            let indent = Self.indentColumns(of: text, lineRange: lineRange)
+                ?? Self.blankLineIndent(in: text, around: lineRange)
+            let levels = (indent - 1) / unit
+            if levels > 0 {
+                let glyph = layoutManager.glyphIndexForCharacter(at: lineStart)
+                let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+                let top = fragment.minY + textContainerOrigin.y
+                for level in 1...levels {
+                    let x = floor(originX + CGFloat(level * unit) * columnWidth) + 0.5
+                    NSRect(x: x - 0.5, y: top, width: 1, height: fragment.height).fill(using: .sourceOver)
+                }
+            }
+            lineStart = NSMaxRange(lineRange)
+        }
+    }
+
+    /// Leading whitespace in columns (a tab counts as one indent unit); nil for blank lines.
+    private static func indentColumns(of text: NSString, lineRange: NSRange) -> Int? {
+        var columns = 0
+        for index in lineRange.location..<NSMaxRange(lineRange) {
+            switch text.character(at: index) {
+            case 0x20: columns += 1
+            case 0x09: columns += Indentation.unit.count
+            case 0x0A, 0x0D: return nil
+            default: return columns
+            }
+        }
+        return nil
+    }
+
+    /// A blank line takes the smaller indent of the nearest non-blank lines above and below,
+    /// so guides run through blank lines inside a block but not between top-level blocks.
+    private static func blankLineIndent(in text: NSString, around lineRange: NSRange) -> Int {
+        let searchLimit = 200
+        func nearest(from start: NSRange, forward: Bool) -> Int {
+            var range = start
+            for _ in 0..<searchLimit {
+                if forward {
+                    guard NSMaxRange(range) < text.length else { return 0 }
+                    range = text.lineRange(for: NSRange(location: NSMaxRange(range), length: 0))
+                } else {
+                    guard range.location > 0 else { return 0 }
+                    range = text.lineRange(for: NSRange(location: range.location - 1, length: 0))
+                }
+                if let indent = indentColumns(of: text, lineRange: range) { return indent }
+            }
+            return 0
+        }
+        return min(nearest(from: lineRange, forward: false), nearest(from: lineRange, forward: true))
+    }
+
     override func keyDown(with event: NSEvent) {
         if keyDownInterceptor?(event) == true { return }
         super.keyDown(with: event)
